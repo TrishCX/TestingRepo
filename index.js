@@ -626,7 +626,10 @@ async function findVideo(uri) {
         });
       }
     });
-  for (const v of allBigVideosArray) {
+
+  const shuffledArray = allBigVideosArray.sort(() => Math.random() - 0.5);
+  const filteredArray = shuffledArray.slice(0, 5);
+  for (const v of filteredArray) {
     const response = await getData(v.uri);
     videos.push({
       source: FapXLBaseURI,
