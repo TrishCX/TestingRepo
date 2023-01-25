@@ -4,8 +4,14 @@ const port = 3000;
 import cheerio from "cheerio";
 import got from "got";
 import extractUrls from "extract-urls";
+import ms from "ms";
+import moment from "moment";
+const config = {
+  fapXL: "https://fapxl.com",
+};
 
 const app = express();
+app.use(cors({ origin: "*" }));
 express.json({
   strict: false,
 });
@@ -17,70 +23,8 @@ app.get("/", (req, res) => {
 
 app.get("/video-get/:query", async (req, res) => {
   const query = req.params.query;
-  const baseURI = `https://www.xtits.com/search/${query}/`;
-  const body = await (await got(baseURI)).body;
-  const $ = cheerio.load(body);
-  const videoInformation = [];
-  $(".wrapper")
-    .find(".wrapper-holder")
-    .find(".container")
-    .find(".main-content")
-    .find("#list_videos_videos_list_search_result")
-    .find(".thumbs-holder")
-    .find(".thumb-item")
-    .map(async (index, element) => {
-      const title = $(element)
-        .find(`a.js-open-popup`)
-        .find(".info-holder")
-        .find("p.title")
-        .text()
-        .trim();
-      const _duration = $(element)
-        .find(`a.js-open-popup`)
-        .find(".img-holder")
-        .find("span.time")
-        .text()
-        .trim();
-      const milliseconds = msToDuration(_duration);
-      for (const result of [{ duration: _duration, ms: milliseconds }]) {
-        if (result?.ms <= 600000) return;
-        const eachVideoThumbnail = $(`span:contains("${result.duration}")`)
-          .parent()
-          .parent()
-          .parent()
-          .find("a.js-open-popup")
-          .find(".img-holder")
-          .find("img")
-          .attr("data-original");
-        const eachVideoHREF = $(`span:contains("${result.duration}")`)
-          .parent()
-          .parent()
-          .parent()
-          .find("a.js-open-popup")
-          .attr("href");
-        return videoInformation.push({
-          uri: eachVideoHREF,
-          thumbnail: eachVideoThumbnail,
-          title,
-          duration: _duration,
-        });
-      }
-    });
-  const finalVideoLook = [];
-  const sortedArray = videoInformation.sort(() => Math.random() - 0.5);
-  const slicedArray = sortedArray.slice(0, 5);
-  for (const data of slicedArray) {
-    const response = await fetchVideo(data.uri);
-    finalVideoLook.push({
-      duration: data.duration,
-      thumbnail: data.thumbnail,
-      title: response.title,
-      uri: response.uri[0],
-    });
-  }
-  return res.send({
-    finalVideoLook,
-  });
+  const response = await searchVideo("Alison Tyler");
+  return res.send({ response });
 });
 
 app.get("/star-get/:name", async (req, res) => {
@@ -405,4 +349,306 @@ function msToDuration(timeInString) {
       Number(timeInString.split(":")[2]) * 60000 +
       Number(timeInString.split(":")[3]) * 1000);
   }
+}
+
+async function findVideosSpankBank(name) {
+  const baseURI = "https://spankbang.com";
+  const body = await (
+    await got(`https://spankbang.com/s/${name.toString()}/?o=all`)
+  ).body;
+  const $ = cheerio.load(body);
+  const arrayOfURI = [];
+  $("#container")
+    .find(".search_page")
+    .find(".main_results")
+    .find(".results_search")
+    .find(".video-list")
+    .find(".video-item")
+    .map((index, element) => {
+      const $_ = $(element);
+      const time = $_.find("a").find("p.t").find("span.l").html();
+      if (time === null) return;
+      const formattedTimings = ms(time);
+      if (formattedTimings <= 600000) return;
+      const hours = moment
+        .utc(moment.duration(formattedTimings, "milliseconds").asMilliseconds())
+        .format("HH");
+      const mins = moment
+        .utc(moment.duration(formattedTimings, "milliseconds").asMilliseconds())
+        .format("mm");
+      const seconds = moment
+        .utc(moment.duration(formattedTimings, "milliseconds").asMilliseconds())
+        .format("ss");
+      const timings =
+        hours === "00" ? `${mins}:${seconds}` : `${hours}:${mins}:${seconds}`;
+      for (const result of [
+        {
+          ms: formattedTimings,
+          duration: timings,
+          showTime: time,
+        },
+      ]) {
+        const eachVideo = $(element).find("a").attr("href");
+        const uris = `${baseURI}${eachVideo}`;
+        arrayOfURI.push(uris);
+      }
+    });
+  const sortedArray = arrayOfURI.sort(() => Math.random() - 0.5);
+  const slicedArray = sortedArray.slice(0, 5);
+  const arrayOfVideos = [];
+  for (let uri of slicedArray) {
+    const actualVideoURI = await fetchData(uri);
+    arrayOfVideos.push({
+      duration: actualVideoURI.videoDuration,
+      title: actualVideoURI?._videoTitle,
+      uri: actualVideoURI.videoActualURI,
+    });
+  }
+  return arrayOfVideos;
+}
+async function fetchData(uri) {
+  const body = await (await got(uri)).body;
+  const $ = cheerio.load(body);
+  const _videoTitle = $("main#container")
+    .find("div#video")
+    .find(".left")
+    .find("h1")
+    .html();
+  const videoActualURI = $("main#container")
+    .find("div#video")
+    .find("#player_wrapper_outer")
+    .find("#video_container")
+    .find("video")
+    .find("source")
+    .attr("src");
+  const videoDuration = $("main#container")
+    .find("div#video")
+    .find("#player_wrapper_outer")
+    .find(".play_cover")
+    .find("span.i-length")
+    .html();
+  return {
+    videoActualURI,
+    _videoTitle,
+    videoDuration,
+  };
+}
+
+async function getPages(baseURI) {
+  const uri = `https://fapxl.com/search?query=${baseURI}`;
+  const body = await (await got(uri)).body;
+  const $ = cheerio.load(body);
+  const pages = [];
+  const data = $(".wrap")
+    .find(".row")
+    .find("#contentwrap")
+    .find(".row")
+    .find(".col-md-12")
+    .find(".justify-content-center")
+    .find(".page-item")
+    .each((index, element) => {
+      const $_ = $(element).find("a").attr(`href`);
+      pages.push($_);
+    });
+  const filteredArray = pages.filter(
+    (v, i) => v !== "#" && pages.indexOf(v) === i
+  );
+  return filteredArray;
+}
+
+async function xTitsVideo(query) {
+  const baseURI = `https://www.xtits.com/search/${query}/`;
+  const body = await (await got(baseURI)).body;
+  const $ = cheerio.load(body);
+  const videoInformation = [];
+  $(".wrapper")
+    .find(".wrapper-holder")
+    .find(".container")
+    .find(".main-content")
+    .find("#list_videos_videos_list_search_result")
+    .find(".thumbs-holder")
+    .find(".thumb-item")
+    .map(async (index, element) => {
+      const title = $(element)
+        .find(`a.js-open-popup`)
+        .find(".info-holder")
+        .find("p.title")
+        .text()
+        .trim();
+      const _duration = $(element)
+        .find(`a.js-open-popup`)
+        .find(".img-holder")
+        .find("span.time")
+        .text()
+        .trim();
+      const milliseconds = msToDuration(_duration);
+      for (const result of [{ duration: _duration, ms: milliseconds }]) {
+        if (result?.ms <= 600000) return;
+        const eachVideoThumbnail = $(`span:contains("${result.duration}")`)
+          .parent()
+          .parent()
+          .parent()
+          .find("a.js-open-popup")
+          .find(".img-holder")
+          .find("img")
+          .attr("data-original");
+        const eachVideoHREF = $(`span:contains("${result.duration}")`)
+          .parent()
+          .parent()
+          .parent()
+          .find("a.js-open-popup")
+          .attr("href");
+        return videoInformation.push({
+          uri: eachVideoHREF,
+          thumbnail: eachVideoThumbnail,
+          title,
+          duration: _duration,
+        });
+      }
+    });
+  const finalVideoLook = [];
+  const sortedArray = videoInformation.sort(() => Math.random() - 0.5);
+  const slicedArray = sortedArray.slice(0, 5);
+  for (const data of slicedArray) {
+    const response = await fetchVideo(data.uri);
+    finalVideoLook.push({
+      duration: data.duration,
+      thumbnail: data.thumbnail,
+      title: response.title,
+      uri: response.uri[0],
+    });
+  }
+  return finalVideoLook;
+}
+
+async function getData(uri) {
+  const FapXLBaseURI = config.fapXL;
+  const fapXLContentBasedURI = "https:";
+  const _body = await got(uri);
+  const $_videos = cheerio.load(_body.body);
+  const videosURI = $_videos(".wrap")
+    .find(".row")
+    .find("#contentwrap")
+    .find(".row")
+    .find(".col-md-12")
+    .find(".col-md-8")
+    .find(".col-md-12")
+    .find("#playerwrap")
+    .find("#player")
+    .attr("data-file");
+  const text = $_videos(".wrap")
+    .find(".row")
+    .find("#contentwrap")
+    .find(".row")
+    .find(".col-md-12")
+    .find(".col-md-4")
+    .find(".tab-content")
+    .find("#info")
+    .find(".card-body")
+    .find("h3")
+    .text();
+  const description = $_videos(".wrap")
+    .find(".row")
+    .find("#contentwrap")
+    .find(".row")
+    .find(".col-md-12")
+    .find(".col-md-4")
+    .find(".tab-content")
+    .find("#info")
+    .find(".card-body")
+    .find("p")
+    .html()
+    ?.trim();
+  return {
+    text,
+    description,
+    videosURI: `${fapXLContentBasedURI}${videosURI}`,
+  };
+}
+
+async function findVideo(uri) {
+  const pageToFetch = await getPages(uri);
+  const page = pageToFetch[Math.floor(Math.random() * pageToFetch.length)];
+  const FapXLBaseURI = config.fapXL;
+  const rawBody = await await (await got(`${FapXLBaseURI}/${page}`)).body;
+  const body = rawBody;
+  const $ = cheerio.load(body);
+  const allBigVideosArray = [];
+  const videos = [];
+  $(".wrap")
+    .find(".row")
+    .find("#contentwrap")
+    .find(".row")
+    .find(".col-md-12")
+    .find(".row-cols-lg-4")
+    .find(".video")
+    .map(async (index, element) => {
+      const filtration = $(element)
+        .find(".card-body")
+        .last()
+        .find(".col-md-6")
+        .first()
+        .text()
+        .trim();
+      const milliseconds = msToDuration(filtration);
+      for (let result of [{ duration: filtration, ms: milliseconds }]) {
+        if (result?.ms <= 600000) return;
+        const eachVideo = $(element)
+          .find(`span:contains("${result.duration}")`)
+          .parent()
+          .parent()
+          .parent()
+          .find("span.vid")
+          .find("a")
+          .attr("href");
+        const uris = `${FapXLBaseURI}/${eachVideo}`;
+        return allBigVideosArray.push({
+          duration: result.duration,
+          uri: uris,
+        });
+      }
+    });
+  for (const v of allBigVideosArray) {
+    const response = await getData(v.uri);
+    videos.push({
+      source: FapXLBaseURI,
+      title: response.text,
+      uri: response.videosURI,
+      description: response.description,
+      duration: v.duration,
+    });
+  }
+  return videos;
+}
+
+async function searchVideo(query) {
+  const videosArray = [];
+  const fapXl = await findVideo(query);
+  const xTits = await xTitsVideo(query);
+  const spankBang = await findVideosSpankBank(query);
+  for (const data of fapXl) {
+    videosArray.push({
+      duration: data.duration,
+      title: data.title,
+      uri: data.uri,
+      thumbnail: "",
+    });
+  }
+  for (const response of xTits) {
+    videosArray.push({
+      duration: response.duration,
+      title: response.title,
+      uri: response.uri,
+      thumbnail: response.thumbnail,
+    });
+    for (const items of spankBang) {
+      videosArray.push({
+        duration: items.duration,
+        title: items.title,
+        uri: items.uri,
+        thumbnail: "",
+      });
+    }
+  }
+  return videosArray;
 }
