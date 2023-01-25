@@ -21,9 +21,18 @@ app.get("/", (req, res) => {
   });
 });
 
-app.get("/spank/:query", async (req, res) => {
+app.get("/spank-pages/:name", async (req, res) => {
+  const name = req.params.name;
+  const page = await (await spankPages(name)).page;
+  return res.send({
+    page,
+  });
+});
+
+app.get("/spank/:query/:page", async (req, res) => {
   const query = req.params.query;
-  const spankBang = await findVideosSpankBank(query);
+  const page = req.params.page;
+  const spankBang = await findVideosSpankBank(query, page);
   return res.send({
     response: spankBang,
   });
@@ -39,17 +48,40 @@ app.get("/xtits/:query", async (req, res) => {
   });
 });
 
-app.post("/page/xl", async (req, res) => {
-  const query = await req.body.query;
+app.get("/page/xl/:query", async (req, res) => {
+  const query = await req.params.query;
   const response = await getPages(query);
+  console.log(response);
+  const randomPage = response[Math.floor(Math.random() * response.length)];
+  const stringClean = randomPage.slice(
+    randomPage.lastIndexOf("&"),
+    randomPage.length
+  );
+
   return res.send({
-    response,
+    page: stringClean,
+    query,
+  });
+});
+
+app.get("/fetch-page/:page/:query", async (req, res) => {
+  const page = req.params.page;
+  const query = req.params.query;
+  let responsePage;
+  page.includes("&") === true
+    ? (responsePage = `&=${page}`)
+    : (responsePage = "");
+  const baseURI = `https://fapxl.com/search?query=${query}${responsePage}`;
+
+  const response = await fapXLPages(baseURI);
+  return res.send({
+    data: response,
   });
 });
 
 app.get("/fapxl/:query", async (req, res) => {
   const query = req.params.query;
-  const response = await findVideo("Alison Tyler");
+  const response = await findVideo(query);
   return res.send({ response: response });
 });
 
@@ -377,10 +409,10 @@ function msToDuration(timeInString) {
   }
 }
 
-async function findVideosSpankBank(name) {
+async function findVideosSpankBank(name, page) {
   const baseURI = "https://spankbang.com";
   const body = await (
-    await got(`https://spankbang.com/s/${name.toString()}/?o=all`)
+    await got(`https://spankbang.com/s/${name.toString()}/${page}/?o=all`)
   ).body;
   const $ = cheerio.load(body);
   const arrayOfURI = [];
@@ -420,7 +452,7 @@ async function findVideosSpankBank(name) {
       }
     });
   const sortedArray = arrayOfURI.sort(() => Math.random() - 0.5);
-  const slicedArray = sortedArray.slice(0, 6);
+  const slicedArray = sortedArray.slice(0, 8);
   const arrayOfVideos = [];
   for (let uri of slicedArray) {
     const actualVideoURI = await fetchData(uri);
@@ -592,6 +624,61 @@ async function getData(uri) {
   };
 }
 
+async function fapXLPages(uri) {
+  const rawBody = await await (await got(`${uri}`)).body;
+  const body = rawBody;
+  const $ = cheerio.load(body);
+  const allBigVideosArray = [];
+  const videos = [];
+  $(".wrap")
+    .find(".row")
+    .find("#contentwrap")
+    .find(".row")
+    .find(".col-md-12")
+    .find(".row-cols-lg-4")
+    .find(".video")
+    .map(async (index, element) => {
+      const filtration = $(element)
+        .find(".card-body")
+        .last()
+        .find(".col-md-6")
+        .first()
+        .text()
+        .trim();
+      const milliseconds = msToDuration(filtration);
+      for (let result of [{ duration: filtration, ms: milliseconds }]) {
+        if (result?.ms <= 600000) return;
+        const eachVideo = $(element)
+          .find(`span:contains("${result.duration}")`)
+          .parent()
+          .parent()
+          .parent()
+          .find("span.vid")
+          .find("a")
+          .attr("href");
+        const uris = `${config.fapXL}/${eachVideo}`;
+        return allBigVideosArray.push({
+          duration: result.duration,
+          uri: uris,
+        });
+      }
+    });
+
+  const shuffledArray = allBigVideosArray.sort(() => Math.random() - 0.5);
+  const filteredArray = shuffledArray.slice(0, 5);
+  for (const v of filteredArray) {
+    const response = await getData(v.uri);
+    videos.push({
+      source: config.fapXL,
+      title: response.text,
+      uri: response.videosURI,
+      description: response.description,
+      duration: v.duration,
+    });
+  }
+  return videos;
+}
+
 async function findVideo(uri) {
   const FapXLBaseURI = config.fapXL;
   const rawBody = await await (
@@ -662,4 +749,31 @@ async function searchVideo(query) {
     });
   }
   return videosArray;
+}
+
+async function spankPages(name) {
+  const uri = `https://spankbang.com/s/${name}/?o=all`;
+  const body = await (await got(uri)).body;
+  const $ = cheerio.load(body);
+
+  const a = [];
+  const data = $("#container")
+    .find(".search_page")
+    .find(".main_results")
+    .find(".results_search")
+    .find(".paginate-bar")
+    .find(".status")
+    .find("span")
+    .text()
+    .trim()
+    .replace("/", "");
+  const page = Number(data) + 1;
+  for (let i = 0; i < page; i++) {
+    a.push(i);
+  }
+  const randomPage = a[Math.floor(Math.random() * a.length)];
+  const uriToDeliver = `https://spankbang.com/s/${name}/${randomPage}/?o=all`;
+  return {
+    page: randomPage,
+  };
 }
