@@ -39,6 +39,14 @@ app.get("/xtits/:query", async (req, res) => {
   });
 });
 
+app.post("/page/xl", async (req, res) => {
+  const query = await req.body.query;
+  const response = await getPages(query);
+  return res.send({
+    response,
+  });
+});
+
 app.get("/fapxl/:query", async (req, res) => {
   const query = req.params.query;
   const response = await findVideo("Alison Tyler");
@@ -585,10 +593,10 @@ async function getData(uri) {
 }
 
 async function findVideo(uri) {
-  const pageToFetch = await getPages(uri);
-  const page = pageToFetch[Math.floor(Math.random() * pageToFetch.length)];
   const FapXLBaseURI = config.fapXL;
-  const rawBody = await await (await got(`${FapXLBaseURI}/${page}`)).body;
+  const rawBody = await await (
+    await got(`https://fapxl.com/search?query=${uri}`)
+  ).body;
   const body = rawBody;
   const $ = cheerio.load(body);
   const allBigVideosArray = [];
