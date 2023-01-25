@@ -21,10 +21,28 @@ app.get("/", (req, res) => {
   });
 });
 
-app.get("/video-get/:query", async (req, res) => {
+app.get("/spank/:query", async (req, res) => {
   const query = req.params.query;
-  const response = await searchVideo("Alison Tyler");
-  return res.send({ response });
+  const spankBang = await findVideosSpankBank(query);
+  return res.send({
+    response: spankBang,
+  });
+});
+
+app.get("/xtits/:query", async (req, res) => {
+  const query = await req.params.query;
+
+  const xTits = await xTitsVideo(query);
+
+  return res.send({
+    response: xTits,
+  });
+});
+
+app.get("/fapxl/:query", async (req, res) => {
+  const query = req.params.query;
+  const response = await findVideo("Alison Tyler");
+  return res.send({ response: response });
 });
 
 app.get("/star-get/:name", async (req, res) => {
@@ -394,7 +412,7 @@ async function findVideosSpankBank(name) {
       }
     });
   const sortedArray = arrayOfURI.sort(() => Math.random() - 0.5);
-  const slicedArray = sortedArray.slice(0, 5);
+  const slicedArray = sortedArray.slice(0, 6);
   const arrayOfVideos = [];
   for (let uri of slicedArray) {
     const actualVideoURI = await fetchData(uri);
@@ -624,8 +642,6 @@ async function findVideo(uri) {
 async function searchVideo(query) {
   const videosArray = [];
   const fapXl = await findVideo(query);
-  const xTits = await xTitsVideo(query);
-  const spankBang = await findVideosSpankBank(query);
   for (const data of fapXl) {
     videosArray.push({
       duration: data.duration,
@@ -633,22 +649,6 @@ async function searchVideo(query) {
       uri: data.uri,
       thumbnail: "",
     });
-  }
-  for (const response of xTits) {
-    videosArray.push({
-      duration: response.duration,
-      title: response.title,
-      uri: response.uri,
-      thumbnail: response.thumbnail,
-    });
-    for (const items of spankBang) {
-      videosArray.push({
-        duration: items.duration,
-        title: items.title,
-        uri: items.uri,
-        thumbnail: "",
-      });
-    }
   }
   return videosArray;
 }
